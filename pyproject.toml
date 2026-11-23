@@ -1,0 +1,23 @@
+[project]
+name = "nanojit"
+version = "0.1.0"
+description = "A tiny ML compiler: traces Python functions into an SSA-style IR."
+readme = "README.md"
+authors = [
+    { name = "blanky", email = "aaishwarymishra@gmail.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "numpy>=2.5.5",
+]
+
+[project.scripts]
+nanojit = "nanojit:main"
+
+[build-system]
+requires = ["uv_build>=0.13.9,<0.14.0"]
+build-backend = "uv_build"
+
+[tool.ty.environment]
+python = ".venv"
+root = ["./src"]
