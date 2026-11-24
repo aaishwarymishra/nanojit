@@ -10,8 +10,10 @@ requires-python = ">=3.13"
 dependencies = [
     "numpy>=2.5.5",
     "pytest>=9.2.0",
+    "torch>=2.15.0",
+    "triton",
+    "triton-apple-backend",
 ]
-
 [project.scripts]
 nanojit = "nanojit:main"
 
@@ -22,3 +24,29 @@ build-backend = "uv_build"
 [tool.ty.environment]
 python = ".venv"
 root = ["./src"]
+
+[tool.uv]
+no-build-isolation-package = ["triton-apple-backend"]
+
+[tool.uv.extra-build-variables]
+triton = { TRITON_EXT_ENABLED = "1" }
+# LLVM tree the AppleGPU backend compiles against; must match the LLVM hash
+# pinned in triton's cmake/llvm-info.json (llvm-<hash>-macos-arm64-<build>).
+# A stale value builds the backend against the wrong MLIR and fails at runtime
+# (PassManager::run), so update this whenever the triton rev above changes.
+# uv expands `~` in this value (verified: a bogus path fails at find_package(MLIR)).
+triton-apple-backend = { LLVM_INSTALL_DIR = "~/.triton/llvm/llvm-b010a18d-macos-arm64-1" }
+
+[tool.uv.extra-build-dependencies]
+triton-apple-backend = ["scikit_build_core"]
+
+[tool.uv.sources]
+triton = { git = "https://github.com/triton-lang/triton.git", rev = "6fe3348e6e907584e07e593ab19a35caee95c37a" }
+triton-apple-backend = { git = "https://github.com/triton-lang/triton-ext.git", subdirectory = "backend/AppleGPU" }
+
+[dependency-groups]
+dev = [
+    "cmake>=4.4.5",
+    "ninja>=1.13.2",
+    "scikit-build-core>=0.10",
+]
