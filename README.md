@@ -8,15 +8,17 @@ toward optimization and code generation for machine-learning workloads.
 
 1. `Expr` nodes form a graph. Python operators (`+`, `-`, `*`, and their reflected
    forms) build new nodes instead of computing values.
-2. `trace(fn, *args)` runs the function on the arguments you pass. Plain Python
-   values (scalars, lists, dicts, defaults) stay constants; `Expr(op="input")`
-   marks a value symbolic. Required arguments you omit become inputs.
+2. `trace(fn, *examples)` runs the function on example arguments. NumPy arrays
+   become symbolic inputs (shape/dtype are the spec); plain Python values
+   (scalars, lists, dicts, defaults) stay constants.
 3. `print_ir` walks the resulting graph, assigns virtual registers (`%0`, `%1`, ...)
    and prints the IR.
 
 ## Example
 
 ```python
+import numpy as np
+
 from nanojit import trace
 
 
@@ -24,7 +26,7 @@ def model(x):
     return x * 2 + 3
 
 
-trace(model)
+trace(model, np.array(2.0))
 ```
 
 Output:
