@@ -8,11 +8,11 @@ toward optimization and code generation for machine-learning workloads.
 
 1. `Expr` nodes form a graph. Python operators (`+`, `-`, `*`, and their reflected
    forms) build new nodes instead of computing values.
-2. `trace(fn, *examples)` runs the function on example arguments. NumPy arrays
-   become symbolic inputs (shape/dtype are the spec); plain Python values
-   (scalars, lists, dicts, defaults) stay constants.
-3. `print_ir` walks the resulting graph, assigns virtual registers (`%0`, `%1`, ...)
-   and prints the IR.
+2. `trace(fn, *examples)` runs the function on example arguments. Array arguments
+   become symbolic inputs (shape/dtype are the spec); other values (scalars,
+   defaults, lists, dicts) stay constants.
+3. `lower_to_ir` walks the resulting graph, assigns virtual registers (`%0`, `%1`,
+   ...) and returns a `Program` of SSA `Instruction`s.
 
 ## Example
 
@@ -26,17 +26,20 @@ def model(x):
     return x * 2 + 3
 
 
-trace(model, np.array(2.0))
+print(trace(model, np.array(2.0)))
 ```
 
 Output:
 
 ```
-%0 = input x
-%1 = 2
-%2 = mul %0 %1
-%3 = 3
-%4 = add %2 %3
+inputs:
+    %0: float64[]
+
+instructions:
+    %1 = const 2 : int64[]
+    %2 = mul %0, %1 : float64[]
+    %3 = const 3 : int64[]
+    %4 = add %2, %3 : float64[]
 return %4
 ```
 
@@ -45,8 +48,8 @@ return %4
 Early prototype / learning project.
 
 - [x] Symbolic tracing of scalar expressions
-- [x] SSA-style IR printing with register reuse
-- [ ] Shape and dtype inference — prerequisite for every backend
+- [x] SSA-style IR (`Program` / `Instruction`) with register reuse
+- [x] Shape and dtype inference — prerequisite for every backend
 - [ ] Array / tensor ops and a reference lowering to NumPy (eager execution)
 - [ ] Optimization passes: constant folding, CSE, dead-code elimination
 - [ ] Fusion pass + kernel selection (pattern match subgraphs → dispatch)
@@ -86,5 +89,5 @@ uv run python -m nanojit   # run the demo
 src/nanojit/
   __init__.py   package entry point
   __main__.py   demo entry point (`python -m nanojit`)
-  compiler.py   Expr graph, tracer, and IR printer
+  compiler.py   Expr graph, tracer, and IR lowering
 ```

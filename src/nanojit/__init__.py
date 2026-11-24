@@ -1,6 +1,13 @@
-from .compiler import Expr, TensorSpec, print_ir, trace
+from .compiler import (
+    Expr,
+    Instruction,
+    Program,
+    TensorSpec,
+    lower_to_ir,
+    trace,
+)
 
-__all__ = ["Expr", "TensorSpec", "print_ir", "trace"]
+__all__ = ["Expr", "Instruction", "Program", "TensorSpec", "lower_to_ir", "trace"]
 
 
 def main() -> None:

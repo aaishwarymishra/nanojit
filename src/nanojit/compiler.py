@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import numpy as np
 
 
-@dataclass(eq=False)
+@dataclass(frozen=True)
 class TensorSpec:
     shape: tuple
     dtype: np.dtype = np.float32
@@ -74,12 +74,12 @@ class Expr:
     spec: TensorSpec | None = None
 
     @staticmethod
-    def from_numpy(array, name=None) -> "Expr":
+    def from_numpy(array, op: str, name=None) -> "Expr":
 
         if not isinstance(array, np.ndarray):
             raise TypeError("Input must be a numpy array")
         return Expr(
-            op="const",
+            op=op,
             value=array,
             name=name,
             spec=TensorSpec(shape=array.shape, dtype=array.dtype),
@@ -94,7 +94,7 @@ class Expr:
                 f"Cannot convert {type(value)} to Expr. Must be int, float, or np.ndarray."
             )
         array = np.array(value)
-        return Expr.from_numpy(array)
+        return Expr.from_numpy(array, op="const", name=None)
 
     def __add__(self, other):
         other = self.as_expr(other)
@@ -145,54 +145,78 @@ class Expr:
         )
 
 
-def print_ir(root_node: Expr, indent=0):
-    lines = []
+@dataclass
+class Instruction:
+    output: str
+    op: str
+    inputs: tuple
+    spec: TensorSpec
+
+
+@dataclass
+class Program:
+    instructions: list
+    output: str
+
+    def __str__(self) -> str:
+        inputs = [i for i in self.instructions if i.op == "input"]
+        lines = ["inputs:"]
+        lines += [f"    {i.output}: {_format_spec(i.spec)}" for i in inputs]
+        lines += ["", "instructions:"]
+        for i in self.instructions:
+            if i.op == "input":
+                continue
+            if i.op == "const":
+                rhs = "const " + ", ".join(str(v) for v in i.inputs)
+            else:
+                rhs = f"{i.op} " + ", ".join(i.inputs)
+            lines.append(f"    {i.output} = {rhs} : {_format_spec(i.spec)}")
+        lines.append(f"return {self.output}")
+        return "\n".join(lines)
+
+
+def _format_spec(spec: TensorSpec) -> str:
+    dims = ", ".join(str(d) for d in spec.shape)
+    return f"{np.dtype(spec.dtype).name}[{dims}]"
+
+
+def lower_to_ir(root_node: Expr) -> Program:
+    instructions = []
     registers = {}
 
     def visit(node: Expr) -> str:
-
         node_id = id(node)
-
         if node_id in registers:
             return registers[node_id]
 
-        args = [visit(arg) for arg in node.inputs]
+        preds = tuple(visit(arg) for arg in node.inputs)
+        output = f"%{len(registers)}"
+        registers[node_id] = output
 
-        result = f"%{len(registers)}"
-        registers[node_id] = result
-
-        if node.op == "const":
-            lines.append(f"{result} = {node.value}")
-        elif node.op == "input":
-            lines.append(f"{result} = input {node.name}")
-        else:
-            lines.append(f"{result} = {node.op} " + " ".join(args))
-
-        return result
+        inputs = (node.value,) if node.op == "const" else preds
+        instructions.append(
+            Instruction(output=output, op=node.op, inputs=inputs, spec=node.spec)
+        )
+        return output
 
     output = visit(root_node)
-    lines.append(f"return {output}")
-    print("\n".join(lines))
+    return Program(instructions=instructions, output=output)
 
 
 def _to_input(name: str, value):
     if isinstance(value, Expr):
         return value
     if isinstance(value, np.ndarray):
-        return Expr(
-            op="input",
-            name=name,
-            spec=TensorSpec(shape=value.shape, dtype=value.dtype),
-        )
+        return Expr.from_numpy(value, op="input", name=name)
     return value
 
 
-def trace(fn: callable, *args, **kwargs):
+def trace(fn: callable, *args, **kwargs) -> Program:
     """Trace ``fn`` with example arguments.
 
-    NumPy array arguments become symbolic inputs; their shape and dtype are the
-    input specs. Everything else (scalars, lists, dicts, defaults) stays a
-    constant. Pass ``np.array(value)`` to make a scalar an input.
+    Array arguments become symbolic inputs; everything else (scalars, lists,
+    dicts, defaults) stays a constant. Literals in the body stay constants too.
+    Returns the lowered ``Program``.
     """
 
     signature = inspect.signature(fn)
@@ -201,14 +225,10 @@ def trace(fn: callable, *args, **kwargs):
 
     arguments = {}
     for name, param in signature.parameters.items():
-        if param.kind not in (
-            inspect.Parameter.POSITIONAL_ONLY,
-            inspect.Parameter.POSITIONAL_OR_KEYWORD,
-        ):
+        if param.kind is not inspect.Parameter.POSITIONAL_OR_KEYWORD:
             raise ValueError(
                 f"Function {fn.__name__} has unsupported parameter kind: {param.kind}"
             )
         arguments[name] = _to_input(name, bound.arguments[name])
 
-    result = fn(*arguments.values())
-    print_ir(result)
+    return lower_to_ir(fn(**arguments))

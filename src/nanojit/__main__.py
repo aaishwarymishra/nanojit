@@ -8,4 +8,6 @@ def model(x, y):
 
 
 if __name__ == "__main__":
-    trace(model, np.array(2.0), 5)
+    x = np.ones((2, 3), dtype=np.float32)
+    y = np.ones((3,), dtype=np.float32)
+    print(trace(model, x, y))
