@@ -8,8 +8,9 @@ toward optimization and code generation for machine-learning workloads.
 
 1. `Expr` nodes form a graph. Python operators (`+`, `-`, `*`, and their reflected
    forms) build new nodes instead of computing values.
-2. `trace(fn)` binds every function parameter to an `Expr(op="input")` and runs the
-   function on those symbolic values.
+2. `trace(fn, *args)` runs the function on the arguments you pass. Plain Python
+   values (scalars, lists, dicts, defaults) stay constants; `Expr(op="input")`
+   marks a value symbolic. Required arguments you omit become inputs.
 3. `print_ir` walks the resulting graph, assigns virtual registers (`%0`, `%1`, ...)
    and prints the IR.
 
