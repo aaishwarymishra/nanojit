@@ -83,6 +83,19 @@ uv sync              # create the environment
 uv run python -m nanojit   # run the demo
 ```
 
+## Benchmarks
+
+`benchmarks/` compares the same kernel across MLX, raw Metal (`mx.fast.metal_kernel`),
+Triton (AppleGPU backend) and torch MPS:
+
+```bash
+uv run python -m benchmarks            # all kernels, all backends
+uv run python -m benchmarks add        # elementwise add
+```
+
+See [`benchmarks/README.md`](benchmarks/README.md) for the methodology and how to
+add a kernel.
+
 ## Layout
 
 ```
@@ -90,4 +103,8 @@ src/nanojit/
   __init__.py   package entry point
   __main__.py   demo entry point (`python -m nanojit`)
   compiler.py   Expr graph, tracer, and IR lowering
+benchmarks/
+  harness.py    timing loop and markdown table
+  kernels/add.py
+  __main__.py   CLI (`python -m benchmarks`)
 ```
