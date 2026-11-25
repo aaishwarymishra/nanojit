@@ -85,16 +85,16 @@ uv run python -m nanojit   # run the demo
 
 ## Benchmarks
 
-`benchmarks/` compares the same kernel across MLX, raw Metal (`mx.fast.metal_kernel`),
-Triton (AppleGPU backend) and torch MPS:
+`benchmarks/` compares elementwise binary ops (`add`, `sub`, `mul`, `div`) across
+MLX, raw Metal (`mx.fast.metal_kernel`), Triton (AppleGPU backend) and torch MPS:
 
 ```bash
-uv run python -m benchmarks            # all kernels, all backends
-uv run python -m benchmarks add        # elementwise add
+uv run python -m benchmarks            # all ops, all backends
+uv run python -m benchmarks add        # one op
 ```
 
 See [`benchmarks/README.md`](benchmarks/README.md) for the methodology and how to
-add a kernel.
+add an op.
 
 ## Layout
 
@@ -104,7 +104,9 @@ src/nanojit/
   __main__.py   demo entry point (`python -m nanojit`)
   compiler.py   Expr graph, tracer, and IR lowering
 benchmarks/
-  harness.py    timing loop and markdown table
-  kernels/add.py
-  __main__.py   CLI (`python -m benchmarks`)
+  harness.py           timing loop and markdown table
+  kernels/binary_ops.py  add/sub/mul/div cases
+  __main__.py          CLI (`python -m benchmarks`)
+metal_kernels/binary_ops.py    vectorised Metal binary ops
+tritron_kernels/binary_ops.py  Triton binary ops
 ```

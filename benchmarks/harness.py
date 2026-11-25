@@ -33,7 +33,6 @@ class Case:
     sync: Callable[[], None]
     check: Callable[[Any, Any, Any], None] | None = None
     bytes_per_element: int = 12  # 2 reads + 1 write, fp32
-    align: int = 1  # some kernels need a size multiple of this
 
 
 @dataclass(frozen=True)
@@ -47,10 +46,7 @@ class Measurement:
 
 
 def measure(case: Case, elements: int) -> Measurement | None:
-    """Time ``case`` on ``elements`` elements. Returns None if unsupported."""
-    if elements % case.align:
-        return None
-
+    """Time ``case`` on ``elements`` elements."""
     x, y = case.make_inputs(elements)
     out = case.run(x, y)  # also compiles JIT kernels
     case.sync()

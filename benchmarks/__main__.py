@@ -34,9 +34,7 @@ def main(argv: list[str] | None = None) -> None:
             for case in module.cases():
                 if backends is not None and case.name not in backends:
                     continue
-                result = measure(case, elements)
-                if result is not None:
-                    rows.append(result)
+                rows.append(measure(case, elements))
                 time.sleep(COOLDOWN_MS / 1e3)
         print_table(module.TITLE, rows)
 

@@ -1,7 +1,5 @@
-"""Benchmark kernels. Add a module here and expose ``cases()`` + ``SIZES``."""
+"""Benchmark kernels. Each module exports ``OPS``/``cases()`` and ``SIZES``."""
 
-from benchmarks.kernels import add
+from benchmarks.kernels import binary_ops
 
-KERNELS = {
-    "add": add,
-}
+KERNELS = {op: binary_ops.Kernel(op) for op in binary_ops.OPS}
