@@ -1,5 +1,6 @@
 """Benchmark kernels. Each module exports ``OPS``/``cases()`` and ``SIZES``."""
 
-from benchmarks.kernels import binary_ops
+from benchmarks.kernels import binary_ops, softmax
 
 KERNELS = {op: binary_ops.Kernel(op) for op in binary_ops.OPS}
+KERNELS["softmax"] = softmax.Kernel()

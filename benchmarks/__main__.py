@@ -2,7 +2,7 @@
 
     uv run python -m benchmarks
     uv run python -m benchmarks add --sizes 1048576,8388608
-    uv run python -m benchmarks add --backends mlx,metal,triton,torch
+    uv run python -m benchmarks softmax --backends mlx,metal,triton,torch
 """
 
 from __future__ import annotations

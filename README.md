@@ -85,12 +85,14 @@ uv run python -m nanojit   # run the demo
 
 ## Benchmarks
 
-`benchmarks/` compares elementwise binary ops (`add`, `sub`, `mul`, `div`) across
-MLX, raw Metal (`mx.fast.metal_kernel`), Triton via `triton-msl` and torch MPS:
+`benchmarks/` compares elementwise binary ops (`add`, `sub`, `mul`, `div`) and
+row-wise softmax across MLX, raw Metal (`mx.fast.metal_kernel`), Triton via
+`triton-msl` and torch MPS:
 
 ```bash
 uv run python -m benchmarks            # all ops, all backends
 uv run python -m benchmarks add        # one op
+uv run python -m benchmarks softmax    # row-wise softmax
 ```
 
 See [`benchmarks/README.md`](benchmarks/README.md) for the methodology and how to
@@ -104,9 +106,12 @@ src/nanojit/
   __main__.py   demo entry point (`python -m nanojit`)
   compiler.py   Expr graph, tracer, and IR lowering
 benchmarks/
-  harness.py           timing loop and markdown table
+  harness.py             timing loop and markdown table
   kernels/binary_ops.py  add/sub/mul/div cases
-  __main__.py          CLI (`python -m benchmarks`)
-metal_kernels/binary_ops.py    vectorised Metal binary ops
-tritron_kernels/binary_ops.py  Triton binary ops
+  kernels/softmax.py     row-wise softmax cases
+  __main__.py            CLI (`python -m benchmarks`)
+metal_kernels/binary_ops.py      vectorised Metal binary ops
+metal_kernels/softmax.py         row-wise Metal softmax
+tritron_kernels/binary_ops.py    Triton binary ops
+tritron_kernels/fused_softmax.py  Triton softmax
 ```
