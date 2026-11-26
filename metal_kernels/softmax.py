@@ -7,6 +7,8 @@ registers, so each element is read from memory once and written once.
 
 ``READ`` is a Metal template argument and the threadgroup size is a launch
 parameter, so the source is static: no per-shape string manipulation.
+``ROWS`` is a template argument too: each threadgroup can process several
+rows in a serial loop (one row per threadgroup is the default, ``ROWS=1``).
 """
 
 import math
@@ -17,63 +19,72 @@ READS = (2, 4, 8, 16)
 MAX_THREADS = 1024
 
 SOURCE = """
-    uint row = threadgroup_position_in_grid.x;
+    uint tg = threadgroup_position_in_grid.x;
     uint tid = thread_position_in_threadgroup.x;
     uint lane = thread_index_in_simdgroup;
     uint sg = simdgroup_index_in_threadgroup;
     uint groups = simdgroups_per_threadgroup;
     threadgroup float partial[32];
 
-    uint base = row * (uint)cols;
-    if (base >= (uint)size) {
-        return;
-    }
+    for (int r = 0; r < ROWS; r++) {
+        uint row = tg * (uint)ROWS + (uint)r;
+        uint base = row * (uint)cols;
+        if (base >= (uint)size) {
+            break;
+        }
 
-    uint offset = tid * (uint)READ;
-    float vals[READ];
-    float local_max = -INFINITY;
-    for (int j = 0; j < READ; j++) {
-        uint idx = offset + uint(j);
-        vals[j] = idx < (uint)cols ? float(x[base + idx]) : -INFINITY;
-        local_max = max(local_max, vals[j]);
-    }
+        uint offset = tid * (uint)READ;
+        float vals[READ];
+        float local_max = -INFINITY;
+        for (int j = 0; j < READ; j++) {
+            uint idx = offset + uint(j);
+            vals[j] = idx < (uint)cols ? float(x[base + idx]) : -INFINITY;
+            local_max = max(local_max, vals[j]);
+        }
 
-    local_max = simd_max(local_max);
-    if (lane == 0) {
-        partial[sg] = local_max;
-    }
-    threadgroup_barrier(mem_flags::mem_threadgroup);
+        local_max = simd_max(local_max);
+        if (lane == 0) {
+            partial[sg] = local_max;
+        }
+        threadgroup_barrier(mem_flags::mem_threadgroup);
 
-    float row_max = -INFINITY;
-    for (uint g = 0; g < groups; g++) {
-        row_max = max(row_max, partial[g]);
-    }
-    // The sum overwrites the maxima, so everyone must read them first.
-    threadgroup_barrier(mem_flags::mem_threadgroup);
+        float row_max = -INFINITY;
+        for (uint g = 0; g < groups; g++) {
+            row_max = max(row_max, partial[g]);
+        }
+        // The sum overwrites the maxima, so everyone must read them first.
+        threadgroup_barrier(mem_flags::mem_threadgroup);
 
-    float local_sum = 0.0f;
-    for (int j = 0; j < READ; j++) {
-        vals[j] = exp(vals[j] - row_max);
-        local_sum += vals[j];
-    }
+        float local_sum = 0.0f;
+        for (int j = 0; j < READ; j++) {
+            vals[j] = exp(vals[j] - row_max);
+            local_sum += vals[j];
+        }
 
-    local_sum = simd_sum(local_sum);
-    if (lane == 0) {
-        partial[sg] = local_sum;
-    }
-    threadgroup_barrier(mem_flags::mem_threadgroup);
+        local_sum = simd_sum(local_sum);
+        if (lane == 0) {
+            partial[sg] = local_sum;
+        }
+        threadgroup_barrier(mem_flags::mem_threadgroup);
 
-    float row_sum = 0.0f;
-    for (uint g = 0; g < groups; g++) {
-        row_sum += partial[g];
-    }
-    // One reciprocal per thread instead of one division per element.
-    float inv = 1.0f / row_sum;
+        float row_sum = 0.0f;
+        for (uint g = 0; g < groups; g++) {
+            row_sum += partial[g];
+        }
+        // One reciprocal per thread instead of one division per element.
+        float inv = 1.0f / row_sum;
 
-    for (int j = 0; j < READ; j++) {
-        uint idx = offset + uint(j);
-        if (idx < (uint)cols) {
-            out[base + idx] = T(vals[j] * inv);
+        for (int j = 0; j < READ; j++) {
+            uint idx = offset + uint(j);
+            if (idx < (uint)cols) {
+                out[base + idx] = T(vals[j] * inv);
+            }
+        }
+
+        // The next row reuses partial[]; order its writes against this row's
+        // reads. Folded away when ROWS == 1, which needs no trailing barrier.
+        if (ROWS > 1) {
+            threadgroup_barrier(mem_flags::mem_threadgroup);
         }
     }
 """
@@ -86,14 +97,21 @@ _kernel = mx.fast.metal_kernel(
 )
 
 
-def softmax(x: mx.array, num_reads: int = 4) -> mx.array:
-    """Softmax over the last axis of ``x``."""
+def softmax(x: mx.array, num_reads: int = 4, rows_per_threadgroup: int = 1) -> mx.array:
+    """Softmax over the last axis of ``x``.
+
+    ``rows_per_threadgroup`` is the serial outer-loop batch (``ROWS``): how
+    many rows one threadgroup processes back to back. The default of 1 is one
+    row per threadgroup, which keeps the kernel fully parallel.
+    """
     if x.dtype == mx.float64:
         raise ValueError("Metal does not support float64")
     if x.size == 0:
         return mx.array(x)
     if num_reads not in READS:
         raise ValueError(f"num_reads must be one of {READS}")
+    if rows_per_threadgroup < 1:
+        raise ValueError("rows_per_threadgroup must be >= 1")
 
     cols = x.shape[-1]
     rows = x.size // cols
@@ -104,10 +122,11 @@ def softmax(x: mx.array, num_reads: int = 4) -> mx.array:
             "pass a larger num_reads"
         )
 
+    threadgroups = math.ceil(rows / rows_per_threadgroup)
     (out,) = _kernel(
         inputs=[x, x.size, cols],
-        template=[("T", x.dtype), ("READ", num_reads)],
-        grid=(rows * threads, 1, 1),
+        template=[("T", x.dtype), ("READ", num_reads), ("ROWS", rows_per_threadgroup)],
+        grid=(threadgroups * threads, 1, 1),
         threadgroup=(threads, 1, 1),
         output_shapes=[x.shape],
         output_dtypes=[x.dtype],
