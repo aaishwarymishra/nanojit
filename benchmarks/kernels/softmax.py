@@ -5,13 +5,16 @@ from 128 to 4096. The harness's ``elements`` axis is therefore ``rows * width``,
 so each table row is one width. A softmax row must fit in registers, which is
 why the width, not the total size, is the interesting axis.
 
-Triton is launched one row per program, plus two kinds of outer loop:
+Triton and Metal are each launched one row per program/threadgroup plus outer
+loops:
 
-- `triton-rpp2/4/8` — `rows_per_program`, which *unrolls* the row body with
-  ``tl.static_range`` (shader size grows with the row count).
+- `triton-rpp2/4/8` / `metal-rows2/4/8` — `rows_per_program` / ``ROWS``, which
+  batch several rows per program or threadgroup. For Triton that *unrolls* the
+  row body with ``tl.static_range`` (shader size grows with the row count).
 - `triton-persist` — the tutorial's persistent loop (``tl.range``), body
   compiled once, each program striding over rows. It is given 8 rows per
-  program, the same batch as `triton-rpp8`, so the two are comparable.
+  program, the same batch as `triton-rpp8` and `metal-rows8`, so the two are
+  comparable.
 """
 
 import mlx.core as mx
@@ -56,10 +59,13 @@ def cases() -> list[Case]:
         mx.async_eval(out)
         return out
 
-    def metal_run(x, _):
-        out = metal_softmax(x)
-        mx.async_eval(out)
-        return out
+    def metal_run(rows_per_threadgroup):
+        def run(x, _):
+            out = metal_softmax(x, rows_per_threadgroup=rows_per_threadgroup)
+            mx.async_eval(out)
+            return out
+
+        return run
 
     def triton_run(rows_per_program):
         def run(x, _):
@@ -85,7 +91,18 @@ def cases() -> list[Case]:
     bpe = 8
     return [
         Case("mlx", _mlx_inputs, mlx_run, mx.synchronize, check_mlx, bpe),
-        Case("metal", _mlx_inputs, metal_run, mx.synchronize, check_mlx, bpe),
+        Case("metal", _mlx_inputs, metal_run(1), mx.synchronize, check_mlx, bpe),
+        *[
+            Case(
+                f"metal-rows{rpg}",
+                _mlx_inputs,
+                metal_run(rpg),
+                mx.synchronize,
+                check_mlx,
+                bpe,
+            )
+            for rpg in (2, 4, 8)
+        ],
         Case("triton", _torch_inputs, triton_run(1), torch.mps.synchronize, check_torch, bpe),
         *[
             Case(
