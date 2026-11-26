@@ -4,6 +4,13 @@ import torch
 import triton
 import triton.language as tl
 
+try:
+    from _compat import prepare_metal_backend
+except ImportError:  # imported as triton_kernels.binary_ops
+    from ._compat import prepare_metal_backend
+
+prepare_metal_backend()
+
 
 @triton.jit
 def binary_kernel(x_ptr, y_ptr, out_ptr, BLOCK_SIZE: tl.constexpr, OP: tl.constexpr):

@@ -86,7 +86,7 @@ uv run python -m nanojit   # run the demo
 ## Benchmarks
 
 `benchmarks/` compares elementwise binary ops (`add`, `sub`, `mul`, `div`) across
-MLX, raw Metal (`mx.fast.metal_kernel`), Triton (AppleGPU backend) and torch MPS:
+MLX, raw Metal (`mx.fast.metal_kernel`), Triton via `triton-msl` and torch MPS:
 
 ```bash
 uv run python -m benchmarks            # all ops, all backends

@@ -6,14 +6,14 @@ readme = "README.md"
 authors = [
     { name = "blanky", email = "aaishwarymishra@gmail.com" }
 ]
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 dependencies = [
     "mlx>=0.32.5",
     "numpy>=2.5.5",
     "pytest>=9.2.0",
     "torch>=2.15.0",
     "triton",
-    "triton-apple-backend",
+    "triton-msl>=0.3.0",
 ]
 [project.scripts]
 nanojit = "nanojit:main"
@@ -27,27 +27,12 @@ python = ".venv"
 root = ["./src"]
 
 [tool.uv]
-no-build-isolation-package = ["triton-apple-backend"]
-
-[tool.uv.extra-build-variables]
-triton = { TRITON_EXT_ENABLED = "1" }
-# LLVM tree the AppleGPU backend compiles against; must match the LLVM hash
-# pinned in triton's cmake/llvm-info.json (llvm-<hash>-macos-arm64-<build>).
-# A stale value builds the backend against the wrong MLIR and fails at runtime
-# (PassManager::run), so update this whenever the triton rev above changes.
-# uv expands `~` in this value (verified: a bogus path fails at find_package(MLIR)).
-triton-apple-backend = { LLVM_INSTALL_DIR = "~/.triton/llvm/llvm-b010a18d-macos-arm64-1" }
-
-[tool.uv.extra-build-dependencies]
-triton-apple-backend = ["scikit_build_core"]
+# Apple-only project (mlx + triton-msl); avoid resolving torch's Linux-only
+# triton>=3.9 requirement against the pinned 3.7.0 Metal wheel.
+environments = ["sys_platform == 'darwin'"]
 
 [tool.uv.sources]
-triton = { git = "https://github.com/triton-lang/triton.git", rev = "6fe3348e6e907584e07e593ab19a35caee95c37a" }
-triton-apple-backend = { git = "https://github.com/triton-lang/triton-ext.git", subdirectory = "backend/AppleGPU" }
-
-[dependency-groups]
-dev = [
-    "cmake>=4.4.5",
-    "ninja>=1.13.2",
-    "scikit-build-core>=0.10",
-]
+# triton-msl 0.3.0 targets Triton 3.7.0. Triton publishes no macOS wheel, so use
+# the prebuilt cp314/arm64 wheel from the triton-msl release instead of building
+# Triton + LLVM from source. This is why the project runs on Python 3.14.
+triton = { url = "https://github.com/bledden/triton-msl/releases/download/triton-wheel-3.7.0-cp314-macos-arm64/triton-3.7.0%2Bgit4da2e268-cp314-cp314-macosx_15_0_arm64.whl" }
