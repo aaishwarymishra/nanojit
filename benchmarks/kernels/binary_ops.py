@@ -9,10 +9,9 @@ import operator
 import mlx.core as mx
 import torch
 
+from benchmarks.harness import Case
 from metal_kernels.binary_ops import binary_op as metal_binary_op
 from tritron_kernels.binary_ops import binary_op as triton_binary_op
-
-from benchmarks.harness import Case
 
 SIZES = (1_048_576, 8_388_608, 33_554_432)
 _SYMBOLS = {"add": "+", "sub": "-", "mul": "*", "div": "/"}
@@ -77,7 +76,9 @@ def cases(op: str) -> list[Case]:
     def check_mlx(out, x, y):
         ref = fn(x, y)
         # Division can produce inf/nan (a 0 denominator); treat inf==inf as equal.
-        assert mx.all(mx.isfinite(out) == mx.isfinite(ref)).item(), f"mlx {op} non-finite mismatch"
+        assert mx.all(mx.isfinite(out) == mx.isfinite(ref)).item(), (
+            f"mlx {op} non-finite mismatch"
+        )
         finite = mx.isfinite(ref)
         err = mx.max(mx.where(finite, mx.abs(out - ref), 0.0)).item()
         scale = max(1.0, mx.max(mx.where(finite, mx.abs(ref), 0.0)).item())
@@ -85,7 +86,9 @@ def cases(op: str) -> list[Case]:
 
     def check_torch(out, x, y):
         ref = fn(x, y)
-        assert torch.isfinite(out).eq(torch.isfinite(ref)).all().item(), f"torch {op} non-finite mismatch"
+        assert torch.isfinite(out).eq(torch.isfinite(ref)).all().item(), (
+            f"torch {op} non-finite mismatch"
+        )
         finite = torch.isfinite(ref)
         err = (out - ref).abs().masked_fill(~finite, 0).max().item()
         scale = max(1.0, ref.abs().masked_fill(~finite, 0).max().item())

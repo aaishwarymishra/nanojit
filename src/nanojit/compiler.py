@@ -9,7 +9,7 @@ class TensorSpec:
     shape: tuple
     dtype: np.dtype = np.float32
 
-    def infer_broadcast_shape(self, other: "TensorSpec") -> tuple:
+    def infer_broadcast_shape(self, other: TensorSpec) -> tuple:
         """Infer the broadcasted shape of two tensor specs."""
         if len(self.shape) > len(other.shape):
             longer, shorter = self.shape, other.shape
@@ -32,7 +32,7 @@ class TensorSpec:
 
         return tuple(broadcast_shape)
 
-    def infer_matmul_shape(self, other: "TensorSpec") -> tuple:
+    def infer_matmul_shape(self, other: TensorSpec) -> tuple:
         """Infer the shape of the result of a matrix multiplication."""
         if len(self.shape) < 2 or len(other.shape) < 2:
             raise ValueError(
@@ -52,13 +52,13 @@ class TensorSpec:
         )
         return broadcasted_batch_shape + (self.shape[-2], other.shape[-1])
 
-    def broadcast(self, other: "TensorSpec") -> "TensorSpec":
+    def broadcast(self, other: TensorSpec) -> TensorSpec:
         return TensorSpec(
             shape=self.infer_broadcast_shape(other),
             dtype=np.result_type(self.dtype, other.dtype),
         )
 
-    def matmul(self, other: "TensorSpec") -> "TensorSpec":
+    def matmul(self, other: TensorSpec) -> TensorSpec:
         return TensorSpec(
             shape=self.infer_matmul_shape(other),
             dtype=np.result_type(self.dtype, other.dtype),
@@ -74,7 +74,7 @@ class Expr:
     spec: TensorSpec | None = None
 
     @staticmethod
-    def from_numpy(array, op: str, name=None) -> "Expr":
+    def from_numpy(array, op: str, name=None) -> Expr:
 
         if not isinstance(array, np.ndarray):
             raise TypeError("Input must be a numpy array")
@@ -86,7 +86,7 @@ class Expr:
         )
 
     @staticmethod
-    def as_expr(value) -> "Expr":
+    def as_expr(value) -> Expr:
         if isinstance(value, Expr):
             return value
         if not isinstance(value, (int, float, np.ndarray)):

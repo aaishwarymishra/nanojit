@@ -100,7 +100,10 @@ def print_table(title: str, rows: list[Measurement]) -> None:
         print(f"\n{title}: nothing to measure\n")
         return
 
-    best = {r.elements: min(m.mean_ms for m in rows if m.elements == r.elements) for r in rows}
+    best = {
+        r.elements: min(m.mean_ms for m in rows if m.elements == r.elements)
+        for r in rows
+    }
     torch_ms = {r.elements: r.mean_ms for r in rows if r.name == "torch"}
     has_torch = bool(torch_ms)
 
@@ -114,7 +117,9 @@ def print_table(title: str, rows: list[Measurement]) -> None:
     print(header)
     print(rule)
     for r in rows:
-        mean = f"**{_ms(r.mean_ms)}**" if r.mean_ms == best[r.elements] else _ms(r.mean_ms)
+        mean = (
+            f"**{_ms(r.mean_ms)}**" if r.mean_ms == best[r.elements] else _ms(r.mean_ms)
+        )
         line = (
             f"| {r.elements:,} | `{r.name}` | {mean} | {_ms(r.median_ms)} "
             f"| {_ms(r.min_ms)} | {r.gbps:.1f} |"

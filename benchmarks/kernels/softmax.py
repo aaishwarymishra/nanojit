@@ -24,6 +24,8 @@ from benchmarks.harness import Case
 from metal_kernels.softmax import softmax as metal_softmax
 from tritron_kernels.fused_softmax import (
     fused_softmat as triton_softmax,
+)
+from tritron_kernels.fused_softmax import (
     fused_softmat_persistent as triton_softmax_persistent,
 )
 
@@ -103,7 +105,14 @@ def cases() -> list[Case]:
             )
             for rpg in (2, 4, 8)
         ],
-        Case("triton", _torch_inputs, triton_run(1), torch.mps.synchronize, check_torch, bpe),
+        Case(
+            "triton",
+            _torch_inputs,
+            triton_run(1),
+            torch.mps.synchronize,
+            check_torch,
+            bpe,
+        ),
         *[
             Case(
                 f"triton-rpp{rpp}",
@@ -123,5 +132,7 @@ def cases() -> list[Case]:
             check_torch,
             bpe,
         ),
-        Case("torch", _torch_inputs, torch_run, torch.mps.synchronize, check_torch, bpe),
+        Case(
+            "torch", _torch_inputs, torch_run, torch.mps.synchronize, check_torch, bpe
+        ),
     ]

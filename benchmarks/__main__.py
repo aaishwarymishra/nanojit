@@ -1,8 +1,8 @@
 """Run the cross-framework benchmarks.
 
-    uv run python -m benchmarks
-    uv run python -m benchmarks add --sizes 1048576,8388608
-    uv run python -m benchmarks softmax --backends mlx,metal,triton,torch
+uv run python -m benchmarks
+uv run python -m benchmarks add --sizes 1048576,8388608
+uv run python -m benchmarks softmax --backends mlx,metal,triton,torch
 """
 
 from __future__ import annotations
@@ -18,7 +18,9 @@ COOLDOWN_MS = 100  # idle between tests, so each starts from a similar state
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="python -m benchmarks")
-    parser.add_argument("kernel", nargs="?", choices=sorted(KERNELS), help="default: all")
+    parser.add_argument(
+        "kernel", nargs="?", choices=sorted(KERNELS), help="default: all"
+    )
     parser.add_argument("--sizes", help="comma-separated element counts")
     parser.add_argument("--backends", help="comma-separated backend names")
     args = parser.parse_args(argv)
