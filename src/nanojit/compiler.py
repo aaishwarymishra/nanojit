@@ -231,10 +231,20 @@ def lower_to_ir(root_node: Expr, input_nodes: Sequence[Expr] | None = None) -> P
 def _to_input(name: str, value: Any, input_nodes: list[Expr]) -> Any:
     if isinstance(value, Expr):
         raise TypeError(f"Function {name} has an argument that is already an Expr.")
-    value = np.array(value) if not isinstance(value, np.ndarray) else value
-    expr = Expr.from_numpy(value, op="input", name=name)
-    input_nodes.append(expr)
-    return expr
+    if isinstance(value, np.ndarray):
+        expr = Expr.from_numpy(value, op="input", name=name)
+        input_nodes.append(expr)
+        return expr
+    return value
+
+
+def bind_arguments(
+    signature: inspect.Signature, *args: Any, **kwargs: Any
+) -> dict[str, Any]:
+    """Bind call arguments to ``signature`` with defaults applied."""
+    bound = signature.bind(*args, **kwargs)
+    bound.apply_defaults()
+    return dict(bound.arguments)
 
 
 def trace(fn: Callable[..., Expr], *args: Any, **kwargs: Any) -> Program:
@@ -246,8 +256,7 @@ def trace(fn: Callable[..., Expr], *args: Any, **kwargs: Any) -> Program:
     """
 
     signature = inspect.signature(fn)
-    bound = signature.bind(*args, **kwargs)
-    bound.apply_defaults()
+    bound_args = bind_arguments(signature, *args, **kwargs)
 
     arguments: dict[str, Any] = {}
     input_nodes: list[Expr] = []
@@ -256,6 +265,6 @@ def trace(fn: Callable[..., Expr], *args: Any, **kwargs: Any) -> Program:
             raise ValueError(
                 f"Function {fn.__name__} has unsupported parameter kind: {param.kind}"
             )
-        arguments[name] = _to_input(name, bound.arguments[name], input_nodes)
+        arguments[name] = _to_input(name, bound_args[name], input_nodes)
 
     return lower_to_ir(fn(**arguments), input_nodes)
