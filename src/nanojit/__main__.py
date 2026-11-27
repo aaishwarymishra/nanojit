@@ -1,9 +1,9 @@
 import numpy as np
 
-from .compiler import trace
+from .compiler import Expr, trace
 
 
-def model(x, y):
+def model(x: Expr, y: Expr) -> Expr:
     return x * 2 + 3 * y
 
 

@@ -1,15 +1,20 @@
 import inspect
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
+from numpy.typing import DTypeLike, NDArray
+
+type ExprLike = Expr | int | float | NDArray[Any]
 
 
 @dataclass(frozen=True)
 class TensorSpec:
-    shape: tuple
-    dtype: np.dtype = np.float32
+    shape: tuple[int, ...]
+    dtype: DTypeLike = np.float32
 
-    def infer_broadcast_shape(self, other: TensorSpec) -> tuple:
+    def infer_broadcast_shape(self, other: TensorSpec) -> tuple[int, ...]:
         """Infer the broadcasted shape of two tensor specs."""
         if len(self.shape) > len(other.shape):
             longer, shorter = self.shape, other.shape
@@ -32,7 +37,7 @@ class TensorSpec:
 
         return tuple(broadcast_shape)
 
-    def infer_matmul_shape(self, other: TensorSpec) -> tuple:
+    def infer_matmul_shape(self, other: TensorSpec) -> tuple[int, ...]:
         """Infer the shape of the result of a matrix multiplication."""
         if len(self.shape) < 2 or len(other.shape) < 2:
             raise ValueError(
@@ -68,14 +73,13 @@ class TensorSpec:
 @dataclass(eq=False)
 class Expr:
     op: str
-    inputs: tuple = ()
-    value: any = None
+    inputs: tuple[Expr, ...] = ()
+    value: NDArray[Any] | None = None
     name: str | None = None
     spec: TensorSpec | None = None
 
     @staticmethod
-    def from_numpy(array, op: str, name=None) -> Expr:
-
+    def from_numpy(array: NDArray[Any], op: str, name: str | None = None) -> Expr:
         if not isinstance(array, np.ndarray):
             raise TypeError("Input must be a numpy array")
         return Expr(
@@ -86,7 +90,7 @@ class Expr:
         )
 
     @staticmethod
-    def as_expr(value) -> Expr:
+    def as_expr(value: Any) -> Expr:
         if isinstance(value, Expr):
             return value
         if not isinstance(value, (int, float, np.ndarray)):
@@ -96,66 +100,54 @@ class Expr:
         array = np.array(value)
         return Expr.from_numpy(array, op="const", name=None)
 
-    def __add__(self, other):
-        other = self.as_expr(other)
-        return Expr(
-            op="add", inputs=(self, other), spec=self.spec.broadcast(other.spec)
+    def _binary(self, other: ExprLike, op: str, *, reflected: bool = False) -> Expr:
+        other_expr = self.as_expr(other)
+        lhs, rhs = (other_expr, self) if reflected else (self, other_expr)
+        if lhs.spec is None or rhs.spec is None:
+            raise ValueError("Expr must have a TensorSpec for shape inference.")
+        spec = (
+            lhs.spec.matmul(rhs.spec)
+            if op == "matmul"
+            else lhs.spec.broadcast(rhs.spec)
         )
+        return Expr(op=op, inputs=(lhs, rhs), spec=spec)
 
-    def __radd__(self, other):
-        other = self.as_expr(other)
-        return Expr(
-            op="add", inputs=(other, self), spec=other.spec.broadcast(self.spec)
-        )
+    def __add__(self, other: ExprLike) -> Expr:
+        return self._binary(other, "add")
 
-    def __sub__(self, other):
-        other = self.as_expr(other)
-        return Expr(
-            op="sub", inputs=(self, other), spec=self.spec.broadcast(other.spec)
-        )
+    def __radd__(self, other: ExprLike) -> Expr:
+        return self._binary(other, "add", reflected=True)
 
-    def __rsub__(self, other):
-        other = self.as_expr(other)
-        return Expr(
-            op="sub", inputs=(other, self), spec=other.spec.broadcast(self.spec)
-        )
+    def __sub__(self, other: ExprLike) -> Expr:
+        return self._binary(other, "sub")
 
-    def __mul__(self, other):
-        other = self.as_expr(other)
-        return Expr(
-            op="mul", inputs=(self, other), spec=self.spec.broadcast(other.spec)
-        )
+    def __rsub__(self, other: ExprLike) -> Expr:
+        return self._binary(other, "sub", reflected=True)
 
-    def __rmul__(self, other):
-        other = self.as_expr(other)
-        return Expr(
-            op="mul", inputs=(other, self), spec=other.spec.broadcast(self.spec)
-        )
+    def __mul__(self, other: ExprLike) -> Expr:
+        return self._binary(other, "mul")
 
-    def __matmul__(self, other):
-        other = self.as_expr(other)
-        return Expr(
-            op="matmul", inputs=(self, other), spec=self.spec.matmul(other.spec)
-        )
+    def __rmul__(self, other: ExprLike) -> Expr:
+        return self._binary(other, "mul", reflected=True)
 
-    def __rmatmul__(self, other):
-        other = self.as_expr(other)
-        return Expr(
-            op="matmul", inputs=(other, self), spec=other.spec.matmul(self.spec)
-        )
+    def __matmul__(self, other: ExprLike) -> Expr:
+        return self._binary(other, "matmul")
+
+    def __rmatmul__(self, other: ExprLike) -> Expr:
+        return self._binary(other, "matmul", reflected=True)
 
 
 @dataclass
 class Instruction:
     output: str
     op: str
-    inputs: tuple
+    inputs: tuple[str | NDArray[Any], ...]
     spec: TensorSpec
 
 
 @dataclass
 class Program:
-    instructions: list
+    instructions: list[Instruction]
     output: str
 
     def __str__(self) -> str:
@@ -169,7 +161,7 @@ class Program:
             if i.op == "const":
                 rhs = "const " + ", ".join(str(v) for v in i.inputs)
             else:
-                rhs = f"{i.op} " + ", ".join(i.inputs)
+                rhs = f"{i.op} " + ", ".join(str(v) for v in i.inputs)
             lines.append(f"    {i.output} = {rhs} : {_format_spec(i.spec)}")
         lines.append(f"return {self.output}")
         return "\n".join(lines)
@@ -180,9 +172,29 @@ def _format_spec(spec: TensorSpec) -> str:
     return f"{np.dtype(spec.dtype).name}[{dims}]"
 
 
-def lower_to_ir(root_node: Expr) -> Program:
-    instructions = []
-    registers = {}
+def _require_spec(node: Expr) -> TensorSpec:
+    if node.spec is None:
+        raise ValueError(f"Expr {node.op!r} is missing a TensorSpec.")
+    return node.spec
+
+
+def lower_to_ir(root_node: Expr, input_nodes: Sequence[Expr] | None = None) -> Program:
+    instructions: list[Instruction] = []
+    registers: dict[int, str] = {}
+
+    for node in input_nodes or ():
+        node_id = id(node)
+        if node_id not in registers:
+            output = f"%{len(registers)}"
+            registers[node_id] = output
+            instructions.append(
+                Instruction(
+                    output=output,
+                    op=node.op,
+                    inputs=(),
+                    spec=_require_spec(node),
+                )
+            )
 
     def visit(node: Expr) -> str:
         node_id = id(node)
@@ -193,9 +205,19 @@ def lower_to_ir(root_node: Expr) -> Program:
         output = f"%{len(registers)}"
         registers[node_id] = output
 
-        inputs = (node.value,) if node.op == "const" else preds
+        if node.op == "const":
+            if node.value is None:
+                raise ValueError("Const Expr is missing its value.")
+            inputs: tuple[str | NDArray[Any], ...] = (node.value,)
+        else:
+            inputs = preds
         instructions.append(
-            Instruction(output=output, op=node.op, inputs=inputs, spec=node.spec)
+            Instruction(
+                output=output,
+                op=node.op,
+                inputs=inputs,
+                spec=_require_spec(node),
+            )
         )
         return output
 
@@ -203,15 +225,17 @@ def lower_to_ir(root_node: Expr) -> Program:
     return Program(instructions=instructions, output=output)
 
 
-def _to_input(name: str, value):
+def _to_input(name: str, value: Any, input_nodes: list[Expr]) -> Any:
     if isinstance(value, Expr):
-        return value
+        raise TypeError(f"Function {name} has an argument that is already an Expr.")
     if isinstance(value, np.ndarray):
-        return Expr.from_numpy(value, op="input", name=name)
+        expr = Expr.from_numpy(value, op="input", name=name)
+        input_nodes.append(expr)
+        return expr
     return value
 
 
-def trace(fn: callable, *args, **kwargs) -> Program:
+def trace(fn: Callable[..., Expr], *args: Any, **kwargs: Any) -> Program:
     """Trace ``fn`` with example arguments.
 
     Array arguments become symbolic inputs; everything else (scalars, lists,
@@ -223,12 +247,13 @@ def trace(fn: callable, *args, **kwargs) -> Program:
     bound = signature.bind(*args, **kwargs)
     bound.apply_defaults()
 
-    arguments = {}
+    arguments: dict[str, Any] = {}
+    input_nodes: list[Expr] = []
     for name, param in signature.parameters.items():
         if param.kind is not inspect.Parameter.POSITIONAL_OR_KEYWORD:
             raise ValueError(
                 f"Function {fn.__name__} has unsupported parameter kind: {param.kind}"
             )
-        arguments[name] = _to_input(name, bound.arguments[name])
+        arguments[name] = _to_input(name, bound.arguments[name], input_nodes)
 
-    return lower_to_ir(fn(**arguments))
+    return lower_to_ir(fn(**arguments), input_nodes)
