@@ -59,6 +59,13 @@ def test_compile_binds_keywords_and_defaults() -> None:
     np.testing.assert_allclose(fn(x, {"bias": 5}), model(x, {"bias": 5}))
     np.testing.assert_allclose(fn(cfg={"bias": 5}, x=x * 2), model(x * 2, {"bias": 5}))
 
+    try:
+        fn(x, {"bias": 5}, scale=3)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("expected ValueError when static argument changes")
+
 
 def test_execute_validates_inputs_and_ops() -> None:
     x = np.zeros((2, 3), dtype=np.float32)

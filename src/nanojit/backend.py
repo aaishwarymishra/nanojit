@@ -50,21 +50,35 @@ def execute(program: Program, *args: NDArray[Any]) -> NDArray[Any]:
     return env[program.output]
 
 
-# ponytail: per-call executor without static-arg guard; add Backend protocol + jit cache when Metal/Triton plugs in
 def compile(
     fn: Callable[..., Any], *args: Any, **kwargs: Any
 ) -> Callable[..., NDArray[Any]]:
     """Trace ``fn`` on example arguments and return a callable executor."""
     sig = inspect.signature(fn)
+    example_args = bind_arguments(sig, *args, **kwargs)
+
     program = trace(fn, *args, **kwargs)
     input_names = [
         inst.name
         for inst in program.instructions
         if inst.op == "input" and inst.name is not None
     ]
+    input_name_set = set(input_names)
+    static_args = {
+        name: value
+        for name, value in example_args.items()
+        if name not in input_name_set
+    }
 
     def wrapper(*call_args: Any, **call_kwargs: Any) -> NDArray[Any]:
         bound_args = bind_arguments(sig, *call_args, **call_kwargs)
+        for name, expected in static_args.items():
+            actual = bound_args[name]
+            if actual != expected:
+                raise ValueError(
+                    f"Static argument {name!r} changed from {expected!r} to {actual!r}; "
+                    "re-compile to trace with the new value."
+                )
         return execute(program, *(bound_args[name] for name in input_names))
 
     return wrapper
