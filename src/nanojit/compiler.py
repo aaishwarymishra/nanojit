@@ -143,6 +143,7 @@ class Instruction:
     op: str
     inputs: tuple[str | NDArray[Any], ...]
     spec: TensorSpec
+    name: str | None = None
 
 
 @dataclass
@@ -193,6 +194,7 @@ def lower_to_ir(root_node: Expr, input_nodes: Sequence[Expr] | None = None) -> P
                     op=node.op,
                     inputs=(),
                     spec=_require_spec(node),
+                    name=node.name,
                 )
             )
 
@@ -217,6 +219,7 @@ def lower_to_ir(root_node: Expr, input_nodes: Sequence[Expr] | None = None) -> P
                 op=node.op,
                 inputs=inputs,
                 spec=_require_spec(node),
+                name=node.name,
             )
         )
         return output
@@ -228,11 +231,10 @@ def lower_to_ir(root_node: Expr, input_nodes: Sequence[Expr] | None = None) -> P
 def _to_input(name: str, value: Any, input_nodes: list[Expr]) -> Any:
     if isinstance(value, Expr):
         raise TypeError(f"Function {name} has an argument that is already an Expr.")
-    if isinstance(value, np.ndarray):
-        expr = Expr.from_numpy(value, op="input", name=name)
-        input_nodes.append(expr)
-        return expr
-    return value
+    value = np.array(value) if not isinstance(value, np.ndarray) else value
+    expr = Expr.from_numpy(value, op="input", name=name)
+    input_nodes.append(expr)
+    return expr
 
 
 def trace(fn: Callable[..., Expr], *args: Any, **kwargs: Any) -> Program:

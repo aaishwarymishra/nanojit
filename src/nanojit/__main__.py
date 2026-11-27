@@ -1,13 +1,15 @@
 import numpy as np
 
-from .compiler import Expr, trace
+from nanojit.backend import compile
 
 
-def model(x: Expr, y: Expr) -> Expr:
+def model(x: np.array, y: np.array) -> np.array:
     return x * 2 + 3 * y
 
 
 if __name__ == "__main__":
     x = np.ones((2, 3), dtype=np.float32)
     y = np.ones((3,), dtype=np.float32)
-    print(trace(model, x, y))
+    fn = compile(model, x, y)
+    result = fn(x, y)
+    assert np.allclose(result, model(x, y))
